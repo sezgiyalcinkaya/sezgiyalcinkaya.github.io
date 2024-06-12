@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Realtime Line Chart with Plotly and Firebase</title>
+    <!-- Include Plotly.js from CDN -->
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <!-- Include Firebase JavaScript SDK -->
+    <!-- Version 8.10.0 -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+</head>
+<body>
+    <div id="chart_tvoc_sensor_co2"></div>
+
+    <script>
+   const firebaseConfig = {
+    apiKey: "AIzaSyDC1h57a0NiWMT9AXHwKCjj0nuxFvTpGQI",
+    authDomain: "nzfl-testing-2.firebaseapp.com",
+    databaseURL: "https://nzfl-testing-2-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "nzfl-testing-2",
+    storageBucket: "nzfl-testing-2.appspot.com",
+    messagingSenderId: "49651777220",
+    appId: "1:49651777220:web:8f6827edbdf66cbf231391"
+};
+
+
+       // Initialize Firebase
+       firebase.initializeApp(firebaseConfig);
+        const data = firebase.database().ref('device_01');
+
+        // Function to fetch data and update charts for Temperature sensor
+        function fetchDataAndUpdatechart_tvoc_sensor_co2() {
+            data.once('value')
+                .then(snapshot => {
+                    const data = snapshot.val();
+                    if (!data) {
+                        console.error("No data available.");
+                        return;
+                    }
+
+                    const chartsContainer = document.getElementById('chart_tvoc_sensor_co2');
+
+                    // Group data by week
+                    let weekStartTimestamp = null;
+                    let weekData = { timestamps: [], tvoc_sensor_co2_values: [] };
+
+                    for (let key in data) {
+                        const timestamp = new Date(parseInt(key) * 1000);
+                        const weekOfYear = getWeekNumber(timestamp);
+
+                        if (!weekStartTimestamp) {
+                            weekStartTimestamp = timestamp;
+                        } else if (getWeekNumber(weekStartTimestamp) !== weekOfYear) {
+                            // Create chart for previous week data
+                            createChart(weekData.timestamps, weekData.tvoc_sensor_co2_values, weekStartTimestamp, chart_tvoc_sensor_co2);
+                            // Reset week data
+                            weekStartTimestamp = timestamp;
+                            weekData = { timestamps: [], tvoc_sensor_co2_values: [] };
+                        }
+                            ////This code essentially handles the logic for processing data on a weekly basis, 
+                            ///creating charts for each week's data and resetting the data collection for a new week.
+
+
+                        // Add data to current week
+                        weekData.timestamps.push(timestamp.getTime()); // Use raw milliseconds for x-axis
+                        weekData.tvoc_sensor_co2_values.push(data[key].tvoc_sensor_co2);
+                    }
+
+                    // Create chart for last week data
+                    createChart(weekData.timestamps, weekData.tvoc_sensor_co2_values, weekStartTimestamp, chart_tvoc_sensor_co2);
+                })
+                .catch(error => {
+                    console.error("Error fetching data:", error);
+                });
+        }
+        const options = {
+            scales: {
+                y: {
+                    // Defining the threshold line
+                    grid: {
+                        drawBorder: false,
+                        borderDash: [8, 4],
+                    },
+                    ticks: {
+                        // Adjusting the threshold value
+                        callback: function(value, index, values) {
+                            return value == 500 ? 'Threshold' : value;
+                        }
+                    }
+                }
+            }
+        };
+
+       // Function to create a chart for a specific week
+       function createChart(timestamps, tvoc_sensor_co2_values, weekStartTimestamp, tvoc_sensor_co2) {
+    const weekStartDate = new Date(weekStartTimestamp);
+    const weekEndDate = new Date(weekStartTimestamp);
+    weekEndDate.setDate(weekEndDate.getDate() + 6); // Assuming weeks start on Sunday
+
+    const chartTitle = `${weekStartDate.toLocaleDateString('en-US')} - ${weekEndDate.toLocaleDateString('en-US')}`;
+    const chartDiv = document.createElement('div');
+    tvoc_sensor_co2.appendChild(chartDiv);
+
+    // Convert timestamps to day names for x-axis labels
+    const xLabels = timestamps.map(timestamp => new Date(timestamp).toLocaleDateString('en-US', { weekday: 'short' }));
+
+    // Filter x-axis labels to show only one label per day
+    const filteredXLabels = [];
+    let prevDay = '';
+    for (let i = 0; i < xLabels.length; i++) {
+        const day = xLabels[i];
+        if (day !== prevDay) {
+            filteredXLabels.push(day);
+            prevDay = day;
+        } else {
+            filteredXLabels.push('');
+        }
+    }
+
+    // Create hover text with date and time information
+    const hoverText = timestamps.map(timestamp => {
+        const date = new Date(timestamp);
+        return `Date and Time: ${date.toLocaleDateString('en-US')} ${date.toLocaleTimeString('en-US')}`;
+    });
+
+    Plotly.newPlot(chartDiv, [{
+        x: timestamps,
+        y: tvoc_sensor_co2_values,
+        type: 'scatter',
+        mode: 'lines+markers',
+        line: { color: 'rgb(50, 168, 82)', width: 1 },
+        hoverinfo: 'text+y',
+        text: hoverText
+    }], {
+        title: `CO2 SENSOR - ${chartTitle}`,
+        xaxis: { 
+            title: 'Date',
+            tickmode: 'array',
+            tickvals: timestamps,
+            ticktext: filteredXLabels
+        },
+        yaxis: { title: 'CO2 Sensor Value' }
+    });
+}
+
+
+
+        // Function to get the week number of a date
+       function getWeekNumber(date) {
+    const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+    const dayNum = d.getUTCDay(); // Get the day number (0-6, 0 for Sunday)
+    d.setUTCDate(d.getUTCDate() - dayNum); // Set the date to the previous Sunday
+    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+    return Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
+       }
+        // Call the function to fetch data and update charts for HCHO sensor
+        fetchDataAndUpdatechart_tvoc_sensor_co2();
+
+
+    </script>
+</body>
+</html>
